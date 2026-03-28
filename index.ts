@@ -19,15 +19,14 @@ interface ProxyTarget {
   readonly targetUrl: URL;
 }
 
-type ResponseCategory = "json" | "xml" | "html" | "yml" | "text" | "image";
+type ResponseCategory = "json" | "xml" | "html" | "yml" | "text" | "image" | "video" | "audio";
 
 const DEFAULT_ALLOWED_RESPONSE_CATEGORIES: readonly ResponseCategory[] = [
   "json",
   "xml",
   "html",
   "yml",
-  "text",
-  "image",
+  "text"
 ] as const;
 
 const ORIGIN_HOST = process.env.ORIGIN_HOST ?? "*";
@@ -97,7 +96,7 @@ const schema = z.object({
 type ParsedTarget = z.infer<typeof schema>;
 const parseTarget = (request: Request): ProxyTarget | Response => {
   const sourceUrl: URL = new URL(request.url);
-  const { url: targetUrl, ...searchParams }: ParsedTarget = schema.parse({ ...sourceUrl.searchParams });
+  const { url: targetUrl, ...searchParams }: ParsedTarget = schema.parse(Object.fromEntries(sourceUrl.searchParams.entries()));
   Object.entries(searchParams).forEach(([key, value]): void => {
     targetUrl.searchParams.append(key, String(value));
   });
@@ -130,6 +129,14 @@ const parseMimeType = (contentTypeHeader: string | null): string => {
 const resolveResponseCategory = (mimeType: string): ResponseCategory | null => {
   if (!mimeType) {
     return null;
+  }
+
+  if (mimeType.startsWith("video/")) {
+    return "video";
+  }
+
+  if (mimeType.startsWith("audio/")) {
+    return "audio";
   }
 
   if (mimeType.startsWith("image/")) {
@@ -185,9 +192,6 @@ const copyProxyHeaders = (
     if (normalizedKey.startsWith("access-control-")) {
       return;
     }
-    if (normalizedKey === "content-length") {
-      return;
-    }
     responseHeaders.set(key, value);
   });
 };
@@ -211,7 +215,7 @@ const buildCorsResponse = async (
     return createErrorResponse(
       request,
       415,
-      `Content category "${resolvedCategory}" is not allowed by ALLOWED_RESPONSE_CATEGORIES`,
+      `Response type "${resolvedCategory}" is not allowed`,
     );
   }
 
@@ -219,11 +223,17 @@ const buildCorsResponse = async (
   copyProxyHeaders(upstreamResponse, responseHeaders);
 
   let responseBody: ReadableStream<Uint8Array> | string | null = upstreamResponse.body;
+  const isBinaryPassthrough: boolean = ["image", "video", "audio"].includes(
+    resolvedCategory,
+  );
 
-  if (resolvedCategory !== "image") {
+  if (!isBinaryPassthrough) {
     responseBody = await upstreamResponse.text();
     responseHeaders.set("content-type", "text/plain; charset=utf-8");
+    responseHeaders.delete("content-length");
     responseHeaders.delete("content-encoding");
+    responseHeaders.delete("accept-ranges");
+    responseHeaders.delete("content-range");
     responseHeaders.set("x-content-type-options", "nosniff");
   }
 
