@@ -5,7 +5,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "bun build index.ts --outfile corx",
+    "build": "bun --bun build index.ts --outfile corx",
     "start": "bun --bun run index.ts",
     "dev": "bun --bun run --watch index.ts",
     "typecheck": "bun run --noEmit index.ts"

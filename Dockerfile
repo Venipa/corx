@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY package.json ./
 RUN bun install --frozen-lockfile || bun install
+RUN bun --bun build index.ts --outfile corx
+COPY corx ./corx
 
-COPY index.ts ./index.ts
-
-CMD ["bun", "--bun", "run", "index.ts"]
+CMD ["corx"]
