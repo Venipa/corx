@@ -1,3 +1,5 @@
+import z from "zod";
+
 const DEFAULT_PORT: number = 3000;
 const HOP_BY_HOP_HEADERS: ReadonlySet<string> = new Set<string>([
   "connection",
@@ -89,35 +91,15 @@ const createCorsHeaders = (request: Request): Headers => {
 
   return headers;
 };
-
+const schema = z.object({
+  url: z.url().transform((url: string) => new URL(url)),
+}).loose();
+type ParsedTarget = z.infer<typeof schema>;
 const parseTarget = (request: Request): ProxyTarget | Response => {
   const sourceUrl: URL = new URL(request.url);
-  const rawTarget: string | null = sourceUrl.searchParams.get("url");
-
-  if (!rawTarget) {
-    return createErrorResponse(request, 400, "Missing required query param: url");
-  }
-
-  let targetUrl: URL;
-  try {
-    targetUrl = new URL(rawTarget);
-  } catch {
-    return createErrorResponse(request, 400, "Invalid url query param");
-  }
-
-  if (!["http:", "https:"].includes(targetUrl.protocol)) {
-    return createErrorResponse(
-      request,
-      400,
-      "Invalid url query param protocol. Only http and https are allowed.",
-    );
-  }
-
-  sourceUrl.searchParams.forEach((value: string, key: string): void => {
-    if (key === "url") {
-      return;
-    }
-    targetUrl.searchParams.append(key, value);
+  const {url: targetUrl, ...searchParams}: ParsedTarget = schema.parse(sourceUrl);
+  Object.entries(searchParams).forEach(([key, value]): void => {
+    targetUrl.searchParams.append(key, String(value));
   });
 
   return { sourceUrl, targetUrl };
@@ -257,6 +239,10 @@ const buildCorsResponse = async (
   });
 };
 
+const formatZodError = (error: z.ZodError): string => {
+  return error.issues.map((issue: z.ZodIssue) => `${issue.path.join(".")}: ${issue.message}`).join("\n");
+};
+
 const proxyRequest = async (request: Request): Promise<Response> => {
   try {
     if (request.method === "OPTIONS") {
@@ -293,10 +279,17 @@ const proxyRequest = async (request: Request): Promise<Response> => {
 
     return await buildCorsResponse(upstreamResponse, request);
   } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return createErrorResponse(
+        request,
+        400,
+        `Invalid request: \n${formatZodError(error)}`,
+      );
+    }
     return createErrorResponse(
       request,
       500,
-      `Proxy internal error: ${getErrorMessage(error)}`,
+      `Proxy internal error: ${error}`,
     );
   }
 };
