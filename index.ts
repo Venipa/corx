@@ -17,6 +17,24 @@ interface ProxyTarget {
   readonly targetUrl: URL;
 }
 const ORIGIN_HOST = process.env.ORIGIN_HOST ?? "*";
+const createErrorResponse = (
+  request: Request,
+  status: number,
+  message: string,
+): Response => {
+  return new Response(message, {
+    status,
+    headers: createCorsHeaders(request),
+  });
+};
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "Unknown error";
+};
+
 const createCorsHeaders = (request: Request): Headers => {
   const requestHeaders: string =
     request.headers.get("access-control-request-headers") ?? "*";
@@ -39,20 +57,22 @@ const parseTarget = (request: Request): ProxyTarget | Response => {
   const rawTarget: string | null = sourceUrl.searchParams.get("url");
 
   if (!rawTarget) {
-    return new Response("Missing required query param: url", {
-      status: 400,
-      headers: createCorsHeaders(request),
-    });
+    return createErrorResponse(request, 400, "Missing required query param: url");
   }
 
   let targetUrl: URL;
   try {
     targetUrl = new URL(rawTarget);
   } catch {
-    return new Response("Invalid url query param", {
-      status: 400,
-      headers: createCorsHeaders(request),
-    });
+    return createErrorResponse(request, 400, "Invalid url query param");
+  }
+
+  if (!["http:", "https:"].includes(targetUrl.protocol)) {
+    return createErrorResponse(
+      request,
+      400,
+      "Invalid url query param protocol. Only http and https are allowed.",
+    );
   }
 
   sourceUrl.searchParams.forEach((value: string, key: string): void => {
@@ -105,30 +125,47 @@ const buildCorsResponse = (
 };
 
 const proxyRequest = async (request: Request): Promise<Response> => {
-  if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: createCorsHeaders(request),
-    });
+  try {
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: createCorsHeaders(request),
+      });
+    }
+
+    const parsedTarget: ProxyTarget | Response = parseTarget(request);
+    if (parsedTarget instanceof Response) {
+      return parsedTarget;
+    }
+
+    const { targetUrl } = parsedTarget;
+    const headers: Headers = buildUpstreamHeaders(request);
+    const canHaveBody: boolean = !["GET", "HEAD"].includes(request.method);
+
+    let upstreamResponse: Response;
+    try {
+      upstreamResponse = await fetch(targetUrl, {
+        method: request.method,
+        headers,
+        body: canHaveBody ? request.body : undefined,
+        redirect: "manual",
+      });
+    } catch (error: unknown) {
+      return createErrorResponse(
+        request,
+        502,
+        `Upstream request failed: ${getErrorMessage(error)}`,
+      );
+    }
+
+    return buildCorsResponse(upstreamResponse, request);
+  } catch (error: unknown) {
+    return createErrorResponse(
+      request,
+      500,
+      `Proxy internal error: ${getErrorMessage(error)}`,
+    );
   }
-
-  const parsedTarget: ProxyTarget | Response = parseTarget(request);
-  if (parsedTarget instanceof Response) {
-    return parsedTarget;
-  }
-
-  const { targetUrl } = parsedTarget;
-  const headers: Headers = buildUpstreamHeaders(request);
-  const canHaveBody: boolean = !["GET", "HEAD"].includes(request.method);
-
-  const upstreamResponse: Response = await fetch(targetUrl, {
-    method: request.method,
-    headers,
-    body: canHaveBody ? request.body : undefined,
-    redirect: "manual",
-  });
-
-  return buildCorsResponse(upstreamResponse, request);
 };
 
 const portFromEnv: number =
