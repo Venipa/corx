@@ -1,0 +1,11 @@
+services:
+  cors-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # ports:
+    #   - "3000:3000"
+    environment:
+      PORT: "3000"
+      ORIGIN_HOST: ${ORIGIN_HOST:-"*"}
+    restart: unless-stopped

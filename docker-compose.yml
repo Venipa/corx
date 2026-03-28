@@ -7,4 +7,5 @@ services:
       - "3000:3000"
     environment:
       PORT: "3000"
+      ORIGIN_HOST: ${ORIGIN_HOST:-"*"}
     restart: unless-stopped
