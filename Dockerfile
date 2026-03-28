@@ -7,4 +7,4 @@ RUN bun install --frozen-lockfile || bun install
 
 COPY index.ts ./index.ts
 
-CMD ["bun", "run", "index.ts"]
+CMD ["bun", "--bun", "run", "index.ts"]
