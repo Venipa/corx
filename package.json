@@ -1,0 +1,13 @@
+{
+  "name": "corx",
+  "description": "A simple CORS proxy - with body support and optional origin host restriction",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
