@@ -1,9 +1,16 @@
-FROM oven/bun:1-distroless
+FROM oven/bun:1 AS builder
 
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile || bun install
 COPY index.ts ./index.ts
+RUN bun build index.ts --outfile corx
 
-CMD ["bun", "--bun", "--smol", "run", "index.ts"]
+FROM oven/bun:1-alpine AS runner
+
+WORKDIR /app
+
+COPY --from=builder /app/corx ./corx
+
+CMD ["bun", "--smol", "./corx"]

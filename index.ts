@@ -28,25 +28,25 @@ const DEFAULT_ALLOWED_RESPONSE_CATEGORIES: readonly ResponseCategory[] = [
 	"yml",
 	"text",
 ] as const;
+const SET_PARSER = <T extends string>(v: string | null | undefined): Set<T> => {
+  const value  = v?.split(",") ?? DEFAULT_ALLOWED_RESPONSE_CATEGORIES;
+  if (!value?.length) return new Set(DEFAULT_ALLOWED_RESPONSE_CATEGORIES) as Set<T>;
+  return new Set(value.map((s: string) => s.trim().toLowerCase())) as Set<T>;
+}
 const envSchema = z.object({
 	ORIGIN_HOST: z.string().default("*"),
 	ALLOWED_RESPONSE_CATEGORIES: z
 		.string()
-    .default(DEFAULT_ALLOWED_RESPONSE_CATEGORIES.join(","))
+    .nullish()
 		.pipe(
 			z.preprocess(
-				(v) => {
-					if (typeof v === "string") {
-						return new Set(v.split(",").map((s) => s.trim().toLowerCase()));
-					}
-					return v;
-				},
+				SET_PARSER,
 				z.set(z.enum(ResponseCategories)),
 			),
 		)
 		.refine((set) => set.size > 0, { message: "ALLOWED_RESPONSE_CATEGORIES must be a non-empty set" }),
 });
-const { ORIGIN_HOST, ALLOWED_RESPONSE_CATEGORIES } = envSchema.parse(process.env);
+const { ORIGIN_HOST, ALLOWED_RESPONSE_CATEGORIES } = envSchema.parse(Bun.env);
 
 const createErrorResponse = (request: Request, status: number, message: string): Response => {
 	const headers: Headers = createCorsHeaders(request);

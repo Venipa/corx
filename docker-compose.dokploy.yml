@@ -8,5 +8,5 @@ services:
     environment:
       PORT: "3000"
       ORIGIN_HOST: ${ORIGIN_HOST:-"*"}
-      ALLOWED_RESPONSE_CATEGORIES: ${ALLOWED_RESPONSE_CATEGORIES:-"json,xml,html,yml,text"}
+      ALLOWED_RESPONSE_CATEGORIES: ${ALLOWED_RESPONSE_CATEGORIES:-json,xml,html,yml,text}
     restart: unless-stopped
