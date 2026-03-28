@@ -1,9 +1,9 @@
 name: Release Docker Image
 
 on:
-  release:
-    types: [published]
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
 
 permissions:
   contents: read
@@ -42,7 +42,7 @@ jobs:
           images: ${{ steps.image.outputs.name }}
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ github.event.release.tag_name }}
+            type=ref,event=tag
             type=sha
 
       - name: Build and push Docker image
