@@ -97,7 +97,7 @@ const schema = z.object({
 type ParsedTarget = z.infer<typeof schema>;
 const parseTarget = (request: Request): ProxyTarget | Response => {
   const sourceUrl: URL = new URL(request.url);
-  const {url: targetUrl, ...searchParams}: ParsedTarget = schema.parse(sourceUrl);
+  const { url: targetUrl, ...searchParams }: ParsedTarget = schema.parse({ ...sourceUrl.searchParams });
   Object.entries(searchParams).forEach(([key, value]): void => {
     targetUrl.searchParams.append(key, String(value));
   });
