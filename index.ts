@@ -264,9 +264,16 @@ const proxyRequest = async (request: Request): Promise<Response> => {
 
 const portFromEnv: number = Number.parseInt(Bun.env.PORT ?? "", 10) || DEFAULT_PORT;
 
-Bun.serve({
+const server =Bun.serve({
 	port: portFromEnv,
 	fetch: proxyRequest,
 });
 
 console.log(`CORS proxy listening on http://localhost:${portFromEnv}`);
+async function shutdown(signal: string): Promise<void> {
+	console.log(`${signal} received, shutting down...`);
+	await server.stop();
+	process.exit(0);
+}
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
