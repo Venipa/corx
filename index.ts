@@ -65,18 +65,26 @@ const getErrorMessage = (error: unknown): string => {
 	}
 	return "Unknown error";
 };
-
+const getRequestOrigin = (request: Request): string => {
+	const origin: string | null = request.headers.get("origin");
+	if (!origin) {
+		return ORIGIN_HOST;
+	}
+	if (origin.startsWith("http")) {
+		return origin;
+	}
+	return `https://${origin}`;
+};
 const createCorsHeaders = (request: Request): Headers => {
-	const requestHeaders: string = request.headers.get("access-control-request-headers") ?? "*";
-	const requestMethod: string = request.headers.get("access-control-request-method") ?? "*";
-
 	const headers: Headers = new Headers();
-	headers.set("access-control-allow-origin", ORIGIN_HOST);
-	headers.set("access-control-allow-methods", requestMethod);
-	headers.set("access-control-allow-headers", requestHeaders);
-	headers.set("access-control-expose-headers", "*");
+	const requestOrigin = request.headers.get("origin");
+	const allowOrigin = (ORIGIN_HOST === "*" && !requestOrigin) ? "*" : (requestOrigin ?? ORIGIN_HOST);
+
+	headers.set("access-control-allow-origin", allowOrigin);
+	headers.set("access-control-allow-methods", "*");
+	headers.set("access-control-allow-headers", "*");
 	headers.set("access-control-max-age", "86400");
-	headers.set("vary", "origin, access-control-request-method, access-control-request-headers");
+	// headers.set("vary", "origin, access-control-request-method, access-control-request-headers");
 
 	return headers;
 };
