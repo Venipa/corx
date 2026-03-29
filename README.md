@@ -1,4 +1,4 @@
-# corx
+# corx [![Docker](https://github.com/Venipa/corx/actions/workflows/release.yml/badge.svg)](https://github.com/Venipa/corx/actions/workflows/release.yml)
 
 `corx` is an open-source, self-hostable CORS proxy built with Bun.
 
