@@ -32,7 +32,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           preCommands: |
             bun install --frozen-lockfile
-            bun run build
+            bun build src/worker.ts --outfile corx
           command: deploy
           vars: |
             VERSION

@@ -2,10 +2,10 @@ FROM oven/bun:1 AS builder
 
 WORKDIR /app
 
-COPY package.json bun.lock ./
+COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile || bun install
-COPY index.ts ./index.ts
-RUN bun build index.ts --outfile corx
+COPY src/ ./src/
+RUN bun run build --outfile corx
 
 FROM oven/bun:1-alpine AS runner
 

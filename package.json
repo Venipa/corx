@@ -1,14 +1,14 @@
 {
   "name": "corx",
   "description": "A simple CORS proxy - with body support and optional origin host restriction",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "bun --bun build index.ts --outfile corx",
-    "start": "bun --bun run index.ts",
-    "dev": "bun --bun run --watch index.ts",
-    "typecheck": "bun run --noEmit index.ts"
+    "build": "bun --bun build src/index.ts --outfile corx",
+    "start": "bun --bun run src/index.ts",
+    "dev": "bun --bun run --watch src/index.ts",
+    "typecheck": "bun run --noEmit src/index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
