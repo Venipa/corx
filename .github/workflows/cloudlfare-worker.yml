@@ -24,12 +24,13 @@ jobs:
         run: |
           echo "VERSION=$(echo ${{ github.ref_name }} | sed 's/^c/v/')" >> $GITHUB_ENV
         
-      - name: Build
-        run: bun build index.ts --outfile corx
-
       - name: Publish to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          preCommands: build
+          command: deploy
+          vars: |
+            VERSION
           packageManager: bun
