@@ -11,7 +11,8 @@
     "typecheck": "bun run --noEmit index.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "cross-env": "^10.1.0"
   },
   "peerDependencies": {
     "typescript": "^5"
