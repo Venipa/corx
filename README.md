@@ -10,6 +10,7 @@ It forwards requests to a `url` query param target and returns CORS-enabled resp
 - Small Bun runtime footprint
 - Configurable `Access-Control-Allow-Origin`
 - Response-category allowlist (`json`, `xml`, `html`, `yml`, `text`, `image`, `video`, `audio`)
+- Optional domain whitelist/blacklist with exact, wildcard, and regex matching
 
 ## Quick start (Docker)
 
@@ -66,14 +67,25 @@ curl "http://localhost:3000/?url=https://example.com/api/v1/users?name=John&age=
   Example: `https://example.com`
 - `ALLOWED_RESPONSE_CATEGORIES` (default: `json,xml,html,yml,text`)  
   Allowed values: `json,xml,html,yml,text,image,video,audio`
+- `DOMAIN_WHITELIST` (optional)  
+  Comma-separated list of allowed domains/rules.  
+  Rule formats:
+  - Exact: `example.com`
+  - Wildcard: `*.example.com`
+  - Regex: `/^api\d+\.example\.com$/i`
+- `DOMAIN_BLACKLIST` (optional)  
+  Comma-separated list of blocked domains/rules (same formats as whitelist).  
+  Blacklist is evaluated before whitelist.
 
 ## Behavior
 
 - Request method and body are forwarded to upstream
 - Hop-by-hop headers are stripped before upstream call
+- Upstream redirects are followed server-side, and only the final response is returned (no client redirect)
 - CORS headers are added on all responses
 - Non-binary allowed responses are returned as `text/plain; charset=utf-8`
 - Disallowed or unknown upstream content types are blocked with `415`
+- Blocked domains are returned with `403`
 
 ## Container image
 

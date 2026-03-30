@@ -19,6 +19,7 @@ interface ProxyTarget {
 }
 
 type ResponseCategory = "json" | "xml" | "html" | "yml" | "text" | "image" | "video" | "audio";
+type DomainRuleKind = "exact" | "wildcard" | "regex";
 
 const RESPONSE_CATEGORIES: readonly ResponseCategory[] = [
 	"json",
@@ -54,6 +55,8 @@ const envSchema = z.object({
 		.nullish()
 		.pipe(z.preprocess(setParser, z.set(z.enum(RESPONSE_CATEGORIES))))
 		.refine((valueSet) => valueSet.size > 0, { message: "ALLOWED_RESPONSE_CATEGORIES must be a non-empty set" }),
+	DOMAIN_WHITELIST: z.string().nullish(),
+	DOMAIN_BLACKLIST: z.string().nullish(),
 });
 
 const targetSchema = z
@@ -67,11 +70,21 @@ type ParsedTarget = z.infer<typeof targetSchema>;
 export interface ProxyEnvironment {
 	readonly ORIGIN_HOST?: string;
 	readonly ALLOWED_RESPONSE_CATEGORIES?: string;
+	readonly DOMAIN_WHITELIST?: string;
+	readonly DOMAIN_BLACKLIST?: string;
 }
 
 interface ProxyConfig {
 	readonly originHost: string;
 	readonly allowedResponseCategories: Set<ResponseCategory>;
+	readonly domainWhitelist: readonly DomainRule[];
+	readonly domainBlacklist: readonly DomainRule[];
+}
+
+interface DomainRule {
+	readonly kind: DomainRuleKind;
+	readonly source: string;
+	readonly matcher: RegExp;
 }
 
 const getRuntimeEnvironment = (): Record<string, string | undefined> => {
@@ -79,6 +92,67 @@ const getRuntimeEnvironment = (): Record<string, string | undefined> => {
 		return process.env as Record<string, string | undefined>;
 	}
 	return {};
+};
+
+const splitCsv = (value: string): readonly string[] => {
+	return value
+		.split(",")
+		.map((entry: string) => entry.trim())
+		.filter((entry: string) => entry.length > 0);
+};
+
+const escapeRegExp = (value: string): string => {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+const parseRegexRule = (value: string): RegExp => {
+	const lastSlashIndex = value.lastIndexOf("/");
+	if (!value.startsWith("/") || lastSlashIndex <= 0) {
+		throw new Error('Invalid regex domain rule. Expected format "/pattern/flags".');
+	}
+
+	const pattern = value.slice(1, lastSlashIndex);
+	const flags = value.slice(lastSlashIndex + 1);
+	return new RegExp(pattern, flags);
+};
+
+const createDomainRule = (rawRule: string): DomainRule => {
+	const source = rawRule.trim();
+	if (source.length === 0) {
+		throw new Error("Domain rule cannot be empty.");
+	}
+
+	if (source.startsWith("/")) {
+		return {
+			kind: "regex",
+			source,
+			matcher: parseRegexRule(source),
+		};
+	}
+
+	const normalizedSource = source.toLowerCase();
+	if (normalizedSource.includes("*")) {
+		const wildcardPattern = escapeRegExp(normalizedSource).replace(/\\\*/g, ".*");
+		return {
+			kind: "wildcard",
+			source,
+			matcher: new RegExp(`^${wildcardPattern}$`, "i"),
+		};
+	}
+
+	return {
+		kind: "exact",
+		source,
+		matcher: new RegExp(`^${escapeRegExp(normalizedSource)}$`, "i"),
+	};
+};
+
+const parseDomainRules = (value: string | null | undefined): readonly DomainRule[] => {
+	if (!value) {
+		return [];
+	}
+
+	return splitCsv(value).map((rule: string) => createDomainRule(rule));
 };
 
 const resolveConfig = (environment: ProxyEnvironment): ProxyConfig => {
@@ -91,6 +165,8 @@ const resolveConfig = (environment: ProxyEnvironment): ProxyConfig => {
 	return {
 		originHost: parsedEnvironment.ORIGIN_HOST,
 		allowedResponseCategories: parsedEnvironment.ALLOWED_RESPONSE_CATEGORIES,
+		domainWhitelist: parseDomainRules(parsedEnvironment.DOMAIN_WHITELIST),
+		domainBlacklist: parseDomainRules(parsedEnvironment.DOMAIN_BLACKLIST),
 	};
 };
 
@@ -280,10 +356,35 @@ const formatZodError = (error: z.ZodError): string => {
 	return error.issues.map((issue: z.ZodIssue) => `${issue.path.join(".")}: ${issue.message}`).join("\n");
 };
 
+const isDomainMatched = (domain: string, rules: readonly DomainRule[]): boolean => {
+	return rules.some((rule: DomainRule): boolean => rule.matcher.test(domain));
+};
+
+const validateDomainPolicy = (
+	targetUrl: URL,
+	domainWhitelist: readonly DomainRule[],
+	domainBlacklist: readonly DomainRule[],
+): string | null => {
+	const targetDomain = targetUrl.hostname.toLowerCase();
+
+	if (isDomainMatched(targetDomain, domainBlacklist)) {
+		return `Target domain "${targetDomain}" is blocked by DOMAIN_BLACKLIST`;
+	}
+
+	if (domainWhitelist.length > 0 && !isDomainMatched(targetDomain, domainWhitelist)) {
+		return `Target domain "${targetDomain}" is not allowed by DOMAIN_WHITELIST`;
+	}
+
+	return null;
+};
+
 export const proxyRequest = async (request: Request, environment: ProxyEnvironment = {}): Promise<Response> => {
-	const { originHost, allowedResponseCategories } = resolveConfig(environment);
+	let originHostForError = "*";
 
 	try {
+		const { originHost, allowedResponseCategories, domainWhitelist, domainBlacklist } = resolveConfig(environment);
+		originHostForError = originHost;
+
 		if (request.method === "OPTIONS") {
 			return new Response(null, {
 				status: 204,
@@ -292,6 +393,10 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 		}
 
 		const { targetUrl } = parseTarget(request);
+		const domainPolicyError = validateDomainPolicy(targetUrl, domainWhitelist, domainBlacklist);
+		if (domainPolicyError) {
+			return createErrorResponse(request, 403, domainPolicyError, originHost);
+		}
 		const headers = buildUpstreamHeaders(request);
 		const canHaveBody = !["GET", "HEAD"].includes(request.method);
 
@@ -311,8 +416,11 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 		return await buildCorsResponse(upstreamResponse, request, originHost, allowedResponseCategories);
 	} catch (error: unknown) {
 		if (error instanceof z.ZodError) {
-			return createErrorResponse(request, 400, `Invalid request: \n${formatZodError(error)}`, originHost);
+			return createErrorResponse(request, 400, `Invalid request: \n${formatZodError(error)}`, originHostForError);
 		}
-		return createErrorResponse(request, 500, `Proxy internal error: ${error}`, originHost);
+		if (error instanceof Error) {
+			return createErrorResponse(request, 400, `Invalid proxy configuration: ${error.message}`, originHostForError);
+		}
+		return createErrorResponse(request, 500, `Proxy internal error: ${error}`, originHostForError);
 	}
 };
