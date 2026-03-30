@@ -30,7 +30,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           preCommands: bun build index.ts --outfile corx
-          command: bun ./corx
+          command: deploy
           vars: |
             VERSION
           packageManager: bun
