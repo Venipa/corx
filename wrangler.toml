@@ -1,11 +1,9 @@
 name = "corx"
 main = "corx"
 compatibility_date = "2024-06-01"
-workers_dev = true
+workers_dev = false
 
-[build]
-command = "bun build index.ts --outfile corx"
 
 [deploy]
-command = "bun ./corx"
+command = "bun run index.ts"
 
