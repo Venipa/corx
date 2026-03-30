@@ -94,7 +94,7 @@ const getRuntimeEnvironment = (): Record<string, string | undefined> => {
 	return {};
 };
 
-const splitCsv = (value: string): readonly string[] => {
+const splitEnvArray = (value: string): readonly string[] => {
 	return value
 		.split(",")
 		.map((entry: string) => entry.trim())
@@ -152,7 +152,7 @@ const parseDomainRules = (value: string | null | undefined): readonly DomainRule
 		return [];
 	}
 
-	return splitCsv(value).map((rule: string) => createDomainRule(rule));
+	return splitEnvArray(value).map((rule: string) => createDomainRule(rule));
 };
 
 const resolveConfig = (environment: ProxyEnvironment): ProxyConfig => {
@@ -177,36 +177,47 @@ const getErrorMessage = (error: unknown): string => {
 	return "Unknown error";
 };
 
-const getRequestOrigin = (request: Request, originHost: string): string => {
-	const origin = request.headers.get("origin");
-
-	try {
-		if (!origin) {
-			return new URL(request.url).origin ?? originHost;
+const resolveAllowOrigin = (request: Request, originHost: string): string => {
+	const requestOrigin = request.headers.get("origin");
+	if (originHost === "*") {
+		if (requestOrigin?.startsWith("http")) {
+			return requestOrigin;
 		}
-		if (origin.startsWith("http")) {
-			return origin;
-		}
-		return `https://${origin}`;
-	} catch {
-		return originHost;
+		return "*";
 	}
+
+	if (originHost.toLowerCase() === "request-origin") {
+		if (requestOrigin?.startsWith("http")) {
+			return requestOrigin;
+		}
+		return "*";
+	}
+
+	return originHost;
 };
 
 const createCorsHeaders = (request: Request, originHost: string): Headers => {
 	const headers = new Headers();
-	const requestOrigin = getRequestOrigin(request, originHost);
-	const allowOrigin = originHost === "*" && !requestOrigin ? "*" : (requestOrigin ?? originHost);
+	const allowOrigin = resolveAllowOrigin(request, originHost);
 
 	headers.set("access-control-allow-origin", allowOrigin);
 	headers.set("access-control-allow-methods", "*");
 	headers.set("access-control-allow-headers", "*");
 	headers.set("access-control-max-age", "86400");
+	if (allowOrigin !== "*") {
+		headers.set("vary", "origin");
+		headers.set("access-control-allow-credentials", "true");
+	}
 
 	return headers;
 };
 
-const createErrorResponse = (request: Request, status: number, message: string, originHost: string): Response => {
+const createErrorResponse = (
+	request: Request,
+	status: number,
+	message: string,
+	originHost: string,
+): Response => {
 	const headers = createCorsHeaders(request, originHost);
 	headers.set("content-type", "text/plain; charset=utf-8");
 	headers.set("x-content-type-options", "nosniff");
@@ -317,7 +328,12 @@ const buildCorsResponse = async (
 	const responseCategory = resolveResponseCategory(mimeType);
 
 	if (!responseCategory) {
-		return createErrorResponse(request, 415, `Blocked upstream content-type: ${mimeType || "unknown"}`, originHost);
+		return createErrorResponse(
+			request,
+			415,
+			`Blocked upstream content-type: ${mimeType || "unknown"}`,
+			originHost,
+		);
 	}
 
 	if (!allowedResponseCategories.has(responseCategory)) {
@@ -407,19 +423,34 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 				headers,
 				body: canHaveBody ? request.body : undefined,
 				redirect: "follow",
-        signal: request.signal, // cancel proxy if request is aborted
+				signal: request.signal, // cancel proxy if request is aborted
 			});
 		} catch (error: unknown) {
-			return createErrorResponse(request, 502, `Upstream request failed: ${getErrorMessage(error)}`, originHost);
+			return createErrorResponse(
+				request,
+				502,
+				`Upstream request failed: ${getErrorMessage(error)}`,
+				originHost,
+			);
 		}
 
 		return await buildCorsResponse(upstreamResponse, request, originHost, allowedResponseCategories);
 	} catch (error: unknown) {
 		if (error instanceof z.ZodError) {
-			return createErrorResponse(request, 400, `Invalid request: \n${formatZodError(error)}`, originHostForError);
+			return createErrorResponse(
+				request,
+				400,
+				`Invalid request: \n${formatZodError(error)}`,
+				originHostForError,
+			);
 		}
 		if (error instanceof Error) {
-			return createErrorResponse(request, 400, `Invalid proxy configuration: ${error.message}`, originHostForError);
+			return createErrorResponse(
+				request,
+				400,
+				`Invalid proxy configuration: ${error.message}`,
+				originHostForError,
+			);
 		}
 		return createErrorResponse(request, 500, `Proxy internal error: ${error}`, originHostForError);
 	}
