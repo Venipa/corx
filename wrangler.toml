@@ -3,7 +3,7 @@ name = "corx"
 main = "src/worker.ts"
 compatibility_date = "2026-03-30"
 workers_dev = true
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = []
 
 [build]
 command = "bun build src/worker.ts --outfile corx"
