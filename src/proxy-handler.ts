@@ -199,10 +199,15 @@ const resolveAllowOrigin = (request: Request, originHost: string): string => {
 const createCorsHeaders = (request: Request, originHost: string): Headers => {
 	const headers = new Headers();
 	const allowOrigin = resolveAllowOrigin(request, originHost);
+	const requestedMethod = request.headers.get("access-control-request-method");
+	const requestedHeaders = request.headers.get("access-control-request-headers");
 
 	headers.set("access-control-allow-origin", allowOrigin);
-	headers.set("access-control-allow-methods", "*");
-	headers.set("access-control-allow-headers", "*");
+	headers.set("access-control-allow-methods", requestedMethod ?? "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS");
+	headers.set(
+		"access-control-allow-headers",
+		requestedHeaders ?? "authorization,content-type,accept,origin,x-requested-with",
+	);
 	headers.set("access-control-max-age", "86400");
 	if (allowOrigin !== "*") {
 		headers.set("vary", "origin");
