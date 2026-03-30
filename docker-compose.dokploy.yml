@@ -9,4 +9,6 @@ services:
       PORT: "3000"
       ORIGIN_HOST: ${ORIGIN_HOST:-"*"}
       ALLOWED_RESPONSE_CATEGORIES: ${ALLOWED_RESPONSE_CATEGORIES:-json,xml,html,yml,text}
+      DOMAIN_WHITELIST: ${DOMAIN_WHITELIST:-}
+      DOMAIN_BLACKLIST: ${DOMAIN_BLACKLIST:-}
     restart: unless-stopped
