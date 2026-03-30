@@ -87,7 +87,7 @@ jobs:
           name: "${{ github.ref_name }}"
           draft: true
           body: |
-            ${GITHUB_REPOSITORY_OWNER}/${GITHUB_REPOSITORY} v${{ github.ref_name }}
+            ${github.repository_owner}/${github.repository} v${{ github.ref_name }}
             - Build binaries from Docker image build
             - amd64: dist/corx-amd64.tar
             - arm64: dist/corx-arm64.tar

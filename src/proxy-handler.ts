@@ -301,7 +301,7 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 				method: request.method,
 				headers,
 				body: canHaveBody ? request.body : undefined,
-				redirect: "manual",
+				redirect: "follow",
 			});
 		} catch (error: unknown) {
 			return createErrorResponse(request, 502, `Upstream request failed: ${getErrorMessage(error)}`, originHost);
