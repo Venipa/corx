@@ -22,7 +22,7 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Set version
         run: |
-          echo "VERSION=${{ github.ref_name/^c/v }}" >> $GITHUB_ENV
+          echo "VERSION=$(echo ${{ github.ref_name }} | sed 's/^c/v/')" >> $GITHUB_ENV
         
       - name: Build
         run: bun build index.ts --outfile corx
