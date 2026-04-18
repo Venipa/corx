@@ -10,3 +10,11 @@ command = "bun build src/worker.ts --outfile corx"
 
 [deploy]
 command = "bun corx"
+
+[observability]
+[observability.logs]
+enabled = true # log errors
+invocation_logs = false
+
+[observability.traces]
+enabled = true # trace errors and performance
