@@ -1,4 +1,12 @@
 import z from "zod";
+import {
+	createRateLimitHeaders,
+	evaluateRateLimit,
+	rateLimitDefaults,
+	setRateLimitHeaders,
+	type RateLimitState,
+} from "./rate-limit";
+import type { RateLimitStorage } from "./rate-limit-storage";
 
 const HOP_BY_HOP_HEADERS: ReadonlySet<string> = new Set<string>([
 	"connection",
@@ -57,6 +65,8 @@ const envSchema = z.object({
 		.refine((valueSet) => valueSet.size > 0, { message: "ALLOWED_RESPONSE_CATEGORIES must be a non-empty set" }),
 	DOMAIN_WHITELIST: z.string().nullish(),
 	DOMAIN_BLACKLIST: z.string().nullish(),
+	RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(rateLimitDefaults.maxRequests),
+	RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(rateLimitDefaults.windowSeconds),
 });
 
 const targetSchema = z
@@ -72,6 +82,9 @@ export interface ProxyEnvironment {
 	readonly ALLOWED_RESPONSE_CATEGORIES?: string;
 	readonly DOMAIN_WHITELIST?: string;
 	readonly DOMAIN_BLACKLIST?: string;
+	readonly RATE_LIMIT_MAX_REQUESTS?: string;
+	readonly RATE_LIMIT_WINDOW_SECONDS?: string;
+	readonly RATE_LIMIT_STORAGE?: RateLimitStorage;
 }
 
 interface ProxyConfig {
@@ -79,6 +92,9 @@ interface ProxyConfig {
 	readonly allowedResponseCategories: Set<ResponseCategory>;
 	readonly domainWhitelist: readonly DomainRule[];
 	readonly domainBlacklist: readonly DomainRule[];
+	readonly rateLimitMaxRequests: number;
+	readonly rateLimitWindowSeconds: number;
+	readonly rateLimitStorage: RateLimitStorage;
 }
 
 interface DomainRule {
@@ -161,12 +177,19 @@ const resolveConfig = (environment: ProxyEnvironment): ProxyConfig => {
 		...runtimeEnvironment,
 		...environment,
 	});
+	const rateLimitStorage = environment.RATE_LIMIT_STORAGE;
+	if (!rateLimitStorage) {
+		throw new Error("RATE_LIMIT_STORAGE is required.");
+	}
 
 	return {
 		originHost: parsedEnvironment.ORIGIN_HOST,
 		allowedResponseCategories: parsedEnvironment.ALLOWED_RESPONSE_CATEGORIES,
 		domainWhitelist: parseDomainRules(parsedEnvironment.DOMAIN_WHITELIST),
 		domainBlacklist: parseDomainRules(parsedEnvironment.DOMAIN_BLACKLIST),
+		rateLimitMaxRequests: parsedEnvironment.RATE_LIMIT_MAX_REQUESTS,
+		rateLimitWindowSeconds: parsedEnvironment.RATE_LIMIT_WINDOW_SECONDS,
+		rateLimitStorage,
 	};
 };
 
@@ -222,10 +245,14 @@ const createErrorResponse = (
 	status: number,
 	message: string,
 	originHost: string,
+	extraHeaders?: Headers,
 ): Response => {
 	const headers = createCorsHeaders(request, originHost);
 	headers.set("content-type", "text/plain; charset=utf-8");
 	headers.set("x-content-type-options", "nosniff");
+	extraHeaders?.forEach((value: string, key: string): void => {
+		headers.set(key, value);
+	});
 
 	return new Response(message, {
 		status,
@@ -328,6 +355,7 @@ const buildCorsResponse = async (
 	request: Request,
 	originHost: string,
 	allowedResponseCategories: ReadonlySet<ResponseCategory>,
+	rateLimitState: RateLimitState,
 ): Promise<Response> => {
 	const mimeType = parseMimeType(upstreamResponse.headers.get("content-type"));
 	const responseCategory = resolveResponseCategory(mimeType);
@@ -338,11 +366,18 @@ const buildCorsResponse = async (
 			415,
 			`Blocked upstream content-type: ${mimeType || "unknown"}`,
 			originHost,
+			createRateLimitHeaders(rateLimitState),
 		);
 	}
 
 	if (!allowedResponseCategories.has(responseCategory)) {
-		return createErrorResponse(request, 415, `Response type "${responseCategory}" is not allowed`, originHost);
+		return createErrorResponse(
+			request,
+			415,
+			`Response type "${responseCategory}" is not allowed`,
+			originHost,
+			createRateLimitHeaders(rateLimitState),
+		);
 	}
 
 	const responseHeaders = new Headers();
@@ -365,6 +400,7 @@ const buildCorsResponse = async (
 	corsHeaders.forEach((value: string, key: string): void => {
 		responseHeaders.set(key, value);
 	});
+	setRateLimitHeaders(responseHeaders, rateLimitState);
 
 	return new Response(responseBody, {
 		status: upstreamResponse.status,
@@ -403,7 +439,15 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 	let originHostForError = "*";
 
 	try {
-		const { originHost, allowedResponseCategories, domainWhitelist, domainBlacklist } = resolveConfig(environment);
+		const {
+			originHost,
+			allowedResponseCategories,
+			domainWhitelist,
+			domainBlacklist,
+			rateLimitMaxRequests,
+			rateLimitWindowSeconds,
+			rateLimitStorage,
+		} = resolveConfig(environment);
 		originHostForError = originHost;
 
 		if (request.method === "OPTIONS") {
@@ -411,6 +455,21 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 				status: 204,
 				headers: createCorsHeaders(request, originHost),
 			});
+		}
+		const rateLimitState = await evaluateRateLimit({
+			request,
+			storage: rateLimitStorage,
+			maxRequests: rateLimitMaxRequests,
+			windowSeconds: rateLimitWindowSeconds,
+		});
+		if (!rateLimitState.isAllowed) {
+			return createErrorResponse(
+				request,
+				429,
+				`Rate limit exceeded. Try again in ${rateLimitState.resetSeconds} seconds.`,
+				originHost,
+				createRateLimitHeaders(rateLimitState),
+			);
 		}
 
 		const { targetUrl } = parseTarget(request);
@@ -439,7 +498,13 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 			);
 		}
 
-		return await buildCorsResponse(upstreamResponse, request, originHost, allowedResponseCategories);
+		return await buildCorsResponse(
+			upstreamResponse,
+			request,
+			originHost,
+			allowedResponseCategories,
+			rateLimitState,
+		);
 	} catch (error: unknown) {
 		if (error instanceof z.ZodError) {
 			return createErrorResponse(

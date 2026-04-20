@@ -1,14 +1,24 @@
 services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save "" --appendonly no
+    restart: unless-stopped
+
   cors-proxy:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
+    depends_on:
+      - redis
     environment:
       PORT: "3000"
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       ORIGIN_HOST: ${ORIGIN_HOST:-"*"}
       ALLOWED_RESPONSE_CATEGORIES: ${ALLOWED_RESPONSE_CATEGORIES:-json,xml,html,yml,text}
       DOMAIN_WHITELIST: ${DOMAIN_WHITELIST:-}
       DOMAIN_BLACKLIST: ${DOMAIN_BLACKLIST:-}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-10}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-30}
     restart: unless-stopped

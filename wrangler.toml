@@ -11,6 +11,14 @@ command = "bun build src/worker.ts --outfile corx"
 [deploy]
 command = "bun corx"
 
+[vars]
+RATE_LIMIT_MAX_REQUESTS = "10"
+RATE_LIMIT_WINDOW_SECONDS = "30"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "174278c4f9cf47419323c2af44b1f44f"
+
 [observability]
 [observability.logs]
 enabled = true # log errors
