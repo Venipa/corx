@@ -3,17 +3,28 @@ import { createRedisRateLimitStorage } from "./rate-limit-storage-redis";
 
 const DEFAULT_PORT: number = 3000;
 const portFromEnv: number = Number.parseInt(process?.env?.PORT ?? "", 10) || DEFAULT_PORT;
+const parseBooleanEnvironmentValue = (value: string | undefined): boolean => {
+	const normalizedValue = value?.trim().toLowerCase();
+	if (!normalizedValue) {
+		return true;
+	}
+	return ["1", "true", "yes", "on"].includes(normalizedValue);
+};
+const isRateLimitEnabled = parseBooleanEnvironmentValue(process?.env?.RATE_LIMIT_ENABLED);
 const redisUrl = process?.env?.REDIS_URL;
-if (!redisUrl) {
-	throw new Error("REDIS_URL is required for Docker deployment rate limiting.");
-}
-
-const rateLimitStorage = createRedisRateLimitStorage(redisUrl);
+const rateLimitStorage = isRateLimitEnabled
+	? redisUrl
+		? createRedisRateLimitStorage(redisUrl)
+		: (() => {
+				throw new Error("REDIS_URL is required when RATE_LIMIT_ENABLED is true.");
+		  })()
+	: undefined;
 
 const server = Bun.serve({
 	port: portFromEnv,
 	fetch(request: Request): Promise<Response> {
 		return proxyRequest(request, {
+			RATE_LIMIT_ENABLED: process?.env?.RATE_LIMIT_ENABLED,
 			RATE_LIMIT_STORAGE: rateLimitStorage,
 		});
 	},

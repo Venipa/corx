@@ -65,6 +65,7 @@ const envSchema = z.object({
 		.refine((valueSet) => valueSet.size > 0, { message: "ALLOWED_RESPONSE_CATEGORIES must be a non-empty set" }),
 	DOMAIN_WHITELIST: z.string().nullish(),
 	DOMAIN_BLACKLIST: z.string().nullish(),
+	RATE_LIMIT_ENABLED: z.coerce.boolean().default(false),
 	RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(rateLimitDefaults.maxRequests),
 	RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(rateLimitDefaults.windowSeconds),
 });
@@ -82,6 +83,7 @@ export interface ProxyEnvironment {
 	readonly ALLOWED_RESPONSE_CATEGORIES?: string;
 	readonly DOMAIN_WHITELIST?: string;
 	readonly DOMAIN_BLACKLIST?: string;
+	readonly RATE_LIMIT_ENABLED?: string;
 	readonly RATE_LIMIT_MAX_REQUESTS?: string;
 	readonly RATE_LIMIT_WINDOW_SECONDS?: string;
 	readonly RATE_LIMIT_STORAGE?: RateLimitStorage;
@@ -92,9 +94,10 @@ interface ProxyConfig {
 	readonly allowedResponseCategories: Set<ResponseCategory>;
 	readonly domainWhitelist: readonly DomainRule[];
 	readonly domainBlacklist: readonly DomainRule[];
+	readonly rateLimitEnabled: boolean;
 	readonly rateLimitMaxRequests: number;
 	readonly rateLimitWindowSeconds: number;
-	readonly rateLimitStorage: RateLimitStorage;
+	readonly rateLimitStorage?: RateLimitStorage;
 }
 
 interface DomainRule {
@@ -178,8 +181,8 @@ const resolveConfig = (environment: ProxyEnvironment): ProxyConfig => {
 		...environment,
 	});
 	const rateLimitStorage = environment.RATE_LIMIT_STORAGE;
-	if (!rateLimitStorage) {
-		throw new Error("RATE_LIMIT_STORAGE is required.");
+	if (parsedEnvironment.RATE_LIMIT_ENABLED && !rateLimitStorage) {
+		throw new Error("RATE_LIMIT_STORAGE is required when RATE_LIMIT_ENABLED is true.");
 	}
 
 	return {
@@ -187,6 +190,7 @@ const resolveConfig = (environment: ProxyEnvironment): ProxyConfig => {
 		allowedResponseCategories: parsedEnvironment.ALLOWED_RESPONSE_CATEGORIES,
 		domainWhitelist: parseDomainRules(parsedEnvironment.DOMAIN_WHITELIST),
 		domainBlacklist: parseDomainRules(parsedEnvironment.DOMAIN_BLACKLIST),
+		rateLimitEnabled: parsedEnvironment.RATE_LIMIT_ENABLED,
 		rateLimitMaxRequests: parsedEnvironment.RATE_LIMIT_MAX_REQUESTS,
 		rateLimitWindowSeconds: parsedEnvironment.RATE_LIMIT_WINDOW_SECONDS,
 		rateLimitStorage,
@@ -355,7 +359,7 @@ const buildCorsResponse = async (
 	request: Request,
 	originHost: string,
 	allowedResponseCategories: ReadonlySet<ResponseCategory>,
-	rateLimitState: RateLimitState,
+	rateLimitState?: RateLimitState,
 ): Promise<Response> => {
 	const mimeType = parseMimeType(upstreamResponse.headers.get("content-type"));
 	const responseCategory = resolveResponseCategory(mimeType);
@@ -366,7 +370,7 @@ const buildCorsResponse = async (
 			415,
 			`Blocked upstream content-type: ${mimeType || "unknown"}`,
 			originHost,
-			createRateLimitHeaders(rateLimitState),
+			rateLimitState ? createRateLimitHeaders(rateLimitState) : undefined,
 		);
 	}
 
@@ -376,7 +380,7 @@ const buildCorsResponse = async (
 			415,
 			`Response type "${responseCategory}" is not allowed`,
 			originHost,
-			createRateLimitHeaders(rateLimitState),
+			rateLimitState ? createRateLimitHeaders(rateLimitState) : undefined,
 		);
 	}
 
@@ -400,7 +404,9 @@ const buildCorsResponse = async (
 	corsHeaders.forEach((value: string, key: string): void => {
 		responseHeaders.set(key, value);
 	});
-	setRateLimitHeaders(responseHeaders, rateLimitState);
+	if (rateLimitState) {
+		setRateLimitHeaders(responseHeaders, rateLimitState);
+	}
 
 	return new Response(responseBody, {
 		status: upstreamResponse.status,
@@ -444,6 +450,7 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 			allowedResponseCategories,
 			domainWhitelist,
 			domainBlacklist,
+			rateLimitEnabled,
 			rateLimitMaxRequests,
 			rateLimitWindowSeconds,
 			rateLimitStorage,
@@ -461,20 +468,27 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 		if (domainPolicyError) {
 			return createErrorResponse(request, 403, domainPolicyError, originHost);
 		}
-		const rateLimitState = await evaluateRateLimit({
-			request,
-			storage: rateLimitStorage,
-			maxRequests: rateLimitMaxRequests,
-			windowSeconds: rateLimitWindowSeconds,
-		});
-		if (!rateLimitState.isAllowed) {
-			return createErrorResponse(
+		let rateLimitState: RateLimitState | undefined;
+		if (rateLimitEnabled) {
+			const storage = rateLimitStorage;
+			if (!storage) {
+				throw new Error("RATE_LIMIT_STORAGE is required when RATE_LIMIT_ENABLED is true.");
+			}
+			rateLimitState = await evaluateRateLimit({
 				request,
-				429,
-				`Rate limit exceeded. Try again in ${rateLimitState.resetSeconds} seconds.`,
-				originHost,
-				createRateLimitHeaders(rateLimitState),
-			);
+				storage,
+				maxRequests: rateLimitMaxRequests,
+				windowSeconds: rateLimitWindowSeconds,
+			});
+			if (!rateLimitState.isAllowed) {
+				return createErrorResponse(
+					request,
+					429,
+					`Rate limit exceeded. Try again in ${rateLimitState.resetSeconds} seconds.`,
+					originHost,
+					createRateLimitHeaders(rateLimitState),
+				);
+			}
 		}
 		const headers = buildUpstreamHeaders(request);
 		const canHaveBody = !["GET", "HEAD"].includes(request.method);

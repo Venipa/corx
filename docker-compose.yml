@@ -14,11 +14,12 @@ services:
       - redis
     environment:
       PORT: "3000"
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       ORIGIN_HOST: ${ORIGIN_HOST:-"*"}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       ALLOWED_RESPONSE_CATEGORIES: ${ALLOWED_RESPONSE_CATEGORIES:-json,xml,html,yml,text}
       DOMAIN_WHITELIST: ${DOMAIN_WHITELIST:-}
       DOMAIN_BLACKLIST: ${DOMAIN_BLACKLIST:-}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
       RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-10}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-30}
     restart: unless-stopped
