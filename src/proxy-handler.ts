@@ -1,10 +1,10 @@
 import z from "zod";
 import {
-	createRateLimitHeaders,
-	evaluateRateLimit,
-	rateLimitDefaults,
-	setRateLimitHeaders,
-	type RateLimitState,
+  createRateLimitHeaders,
+  evaluateRateLimit,
+  rateLimitDefaults,
+  setRateLimitHeaders,
+  type RateLimitState,
 } from "./rate-limit";
 import type { RateLimitStorage } from "./rate-limit-storage";
 
@@ -456,6 +456,11 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 				headers: createCorsHeaders(request, originHost),
 			});
 		}
+		const { targetUrl } = parseTarget(request);
+		const domainPolicyError = validateDomainPolicy(targetUrl, domainWhitelist, domainBlacklist);
+		if (domainPolicyError) {
+			return createErrorResponse(request, 403, domainPolicyError, originHost);
+		}
 		const rateLimitState = await evaluateRateLimit({
 			request,
 			storage: rateLimitStorage,
@@ -470,12 +475,6 @@ export const proxyRequest = async (request: Request, environment: ProxyEnvironme
 				originHost,
 				createRateLimitHeaders(rateLimitState),
 			);
-		}
-
-		const { targetUrl } = parseTarget(request);
-		const domainPolicyError = validateDomainPolicy(targetUrl, domainWhitelist, domainBlacklist);
-		if (domainPolicyError) {
-			return createErrorResponse(request, 403, domainPolicyError, originHost);
 		}
 		const headers = buildUpstreamHeaders(request);
 		const canHaveBody = !["GET", "HEAD"].includes(request.method);
