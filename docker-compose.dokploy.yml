@@ -16,7 +16,8 @@ services:
     # ports:
     #   - "3000:3000"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     environment:
       PORT: "3000"
       ORIGIN_HOST: ${ORIGIN_HOST:-"*"}
