@@ -2,10 +2,10 @@
 name = "corx"
 main = "src/worker.ts"
 compatibility_date = "2026-03-30"
-workers_dev = false
-routes = [
-  { pattern = "corx.venipa.net/*", zone_name = "venipa.net" }
-]
+workers_dev = true
+# routes = [
+#  { pattern = "corx.venipa.net/*", zone_name = "venipa.net" }
+# ]
 compatibility_flags = []
 
 [build]
