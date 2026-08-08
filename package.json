@@ -20,7 +20,7 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "ioredis": "^5.11.0",
+    "ioredis": "^6.0.0",
     "unstorage": "^1.17.5",
     "zod": "^4.4.3"
   }
