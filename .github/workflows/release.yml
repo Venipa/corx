@@ -46,10 +46,15 @@ jobs:
           tar -cf dist/corx-arm64.tar -C dist corx-arm64
           rm -rf dist/amd64-rootfs dist/arm64-rootfs
 
-      - name: Normalize image name
+      - name: Normalize image names
         id: image
         shell: bash
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
+          echo "ghcr=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "dockerhub=${DOCKERHUB_USERNAME,,}/${REPO_NAME,,}" >> "$GITHUB_OUTPUT"
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -58,11 +63,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.image.outputs.name }}
+          images: |
+            ${{ steps.image.outputs.ghcr }}
+            ${{ steps.image.outputs.dockerhub }}
           tags: |
             type=raw,value=latest
             type=ref,event=tag

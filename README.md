@@ -14,8 +14,16 @@ It forwards requests to a `url` query param target and returns CORS-enabled resp
 
 ## Quick start (Docker)
 
+GitHub Container Registry:
+
 ```bash
 docker run --rm -p 3000:3000 ghcr.io/venipa/corx:latest
+```
+
+Docker Hub:
+
+```bash
+docker run --rm -p 3000:3000 venipa/corx:latest
 ```
 
 Test it:
@@ -29,6 +37,7 @@ curl "http://localhost:3000/?url=https://example.com"
 ```yaml
 services:
   corx:
+    # image: venipa/corx:latest
     image: ghcr.io/venipa/corx:latest
     ports:
       - "3000:3000"
@@ -89,5 +98,9 @@ curl "http://localhost:3000/?url=https://example.com/api/v1/users?name=John&age=
 
 ## Container image
 
-- `ghcr.io/venipa/corx:latest`
-- Version tags are published from git tags (for example: `v1.0.0`)
+Same image is published to both registries on git tags (`v*.*.*`):
+
+- GitHub Container Registry: `ghcr.io/venipa/corx`
+- Docker Hub: `venipa/corx`
+
+Tags: `latest`, the git tag (for example: `v1.0.0`), and a short git sha. Swap the image name; tags stay the same.
