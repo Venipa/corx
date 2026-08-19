@@ -11,17 +11,17 @@
     "typecheck": "bun run --noEmit src/index.ts"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260420.1",
+    "@cloudflare/workers-types": "^4.20260530.1",
     "@types/bun": "latest",
     "cross-env": "^10.1.0",
-    "wrangler": "^4.83.0"
+    "wrangler": "^4.95.0"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "ioredis": "^5.10.1",
+    "ioredis": "^5.11.0",
     "unstorage": "^1.17.5",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   }
 }
