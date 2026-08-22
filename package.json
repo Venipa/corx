@@ -11,7 +11,7 @@
     "typecheck": "bun run --noEmit src/index.ts"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260530.1",
+    "@cloudflare/workers-types": "^5.20260819.1",
     "@types/bun": "latest",
     "cross-env": "^10.1.0",
     "wrangler": "^4.95.0"
